@@ -4,7 +4,7 @@
             [miner.herbert.predicates :refer [str?]]
             [clojure.data.xml :refer [parse-str]]))
 
-(def single-simple-type-xsd "<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+(def simpleType-restriction-string-enumeration "<?xml version=\"1.0\" encoding=\"UTF-8\"?>
 <xsd:schema xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\"
             attributeFormDefault=\"qualified\"
             elementFormDefault=\"qualified\"
@@ -40,15 +40,39 @@
 
 (deftest should-define
   (testing "a single simple type which is a restriction of string by enumeration"
-    (let [simple-type (define-simple-type (-> (parse-str single-simple-type-xsd)
+    (let [simple-type (define-simple-type (-> (parse-str simpleType-restriction-string-enumeration)
                                               (get-in [:content])
                                               first))]
       (is (= simple-type {:type    "DoseUnit"
                           :herbert '(and (pred str?) (pred in? #{"MG" "G" "ML" "MCG" "U" "KU", "MU" "MMOL"}))})))))
 
+
+(defn xsd-pattern->herbert [^String xsd-pattern]
+  xsd-pattern)
+
+(deftest should-handle-regex
+  (testing "antislash are doubled"
+    (is (= "\\d" (xsd-pattern->herbert "\\d")))))
+
+(def simpleType-restriction-string-pattern "<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<xsd:schema xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\"
+            attributeFormDefault=\"qualified\"
+            elementFormDefault=\"qualified\"
+            targetNamespace=\"urn:Vidal\">
+    <simpleType name='SKU'>
+        <restriction base='string'>
+            <pattern value='\\d{3}-[A-Z]{2}'/>
+        </restriction>
+    </simpleType>
+</xsd:schema>")
+
 (deftest should-convert-xsd-to-herbert
   (testing "simple type/restriction/string/enum"
-    (let [xml single-simple-type-xsd]
-      (is (= (xms->herbert xml)
+      (is (= (xms->herbert simpleType-restriction-string-enumeration)
              [{:type    "DoseUnit"
-               :herbert '(and (pred str?) (pred in? #{"MG" "G" "ML" "MCG" "U" "KU", "MU" "MMOL"}))}])))))
+               :herbert '(and (pred str?) (pred in? #{"MG" "G" "ML" "MCG" "U" "KU", "MU" "MMOL"}))}])))
+  (testing "simple type/restriction/string/pattern"
+      (is (= (xms->herbert simpleType-restriction-string-pattern)
+             [{:type    "SKU"
+               :herbert '(and (pred str?) (or "\\d{3}-[A-Z]{2}"))}]))))
+

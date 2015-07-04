@@ -24,18 +24,28 @@
 
 (defmulti basetype->herbert
           "convert a base type to an Herbert predicate"
-          (fn [base] base))
+          (fn [base] (last (clojure.string/split base ":"))))
 
-(defmethod basetype->herbert "xsd:string" [_]
+(defmethod basetype->herbert "string" [_]
   '(pred str?))
 
-(defn enumerations->herbert
-  "Convert a list of enumerations to an Herbert predicate"
-  [enumerations]
-  {:pre [(not-any? #(not= :enumeration (:tag %)) enumerations)]}
+(defmulti facets->herbert (fn [[facet-kind _]] facet-kind))
+
+(defmethod facets->herbert :enumeration
+  [[_ enumerations]]
+  {:pre [(not-any? #(not= :enumeration (:tag %)) enumerations)]
+   :doc "Convert a list of enumerations to an Herbert predicate"}
   (let [values (->> (map #(get-in % [:attrs :value]) enumerations)
                     (reduce conj #{}))]
-    (list 'pred 'in? values)))
+    (list 'pred 'in? values)))                            ;; could be (or "foo" "bar")
+
+(defmethod facets->herbert :pattern
+  [[_ patterns]]
+  {:pre [(not-any? #(not= :pattern (:tag %)) patterns)]
+   :doc "Convert a list of patterns to an Herbert predicate"}
+  (->> (map #(get-in % [:attrs :value]) patterns)
+       (reduce conj (list 'or))
+       reverse))
 
 (defn handle-restriction
   "Convert an XSD restriction of a type to a list of Herbert predicates"
@@ -43,12 +53,11 @@
   {:pre (= :restriction (:tag restriction))}
   (let [base (-> (get-in restriction [:attrs :base])
                  basetype->herbert)
-        enumerations (->> (:content restriction)
-                          (filter (partial #(= :enumeration (:tag %))))
-                          enumerations->herbert)]
-    [base enumerations]))
-
-
+        restrictions (->> (:content restriction)
+                          (group-by :tag)
+                          (map facets->herbert)
+                          (apply concat))]
+    [base restrictions]))
 
 (defn define-simple-type
   "take an XSD simpleType and returns an Herbert type definition"
