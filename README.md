@@ -6,6 +6,13 @@ A Clojure library designed to convert XSD to Herbert
 
 Unusable yet, I just started the project :)
 
+## TODO
+
+- simple type
+  - all but string
+  - all but restrictions
+- complex type
+
 ## License
 
 Copyright © 2015 Jérôme Prudent
