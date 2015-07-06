@@ -41,7 +41,7 @@
 
 (deftest should-define-simple-type
   (testing "a single simple type which is a restriction of string by enumeration"
-    (let [simple-type (define-simple-type (-> (parse-str simpleType-restriction-string-enumeration)
+    (let [simple-type (define-type(-> (parse-str simpleType-restriction-string-enumeration)
                                               (get-in [:content])
                                               first))]
       (is (= simple-type {:type    "DoseUnit"
@@ -197,6 +197,18 @@
     </simpleType>
 </xsd:schema>")
 
+(def simplified-complexType-complexContent-restriction-anyType-sequence "<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<xsd:schema xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\"
+            attributeFormDefault=\"qualified\"
+            elementFormDefault=\"qualified\"
+            targetNamespace=\"urn:Vidal\">
+    <xsd:complexType name=\"ArrayOfInt\">
+        <xsd:sequence>
+            <xsd:element maxOccurs=\"unbounded\" minOccurs=\"0\" name=\"int\" nillable=\"true\" type=\"xsd:int\"/>
+        </xsd:sequence>
+    </xsd:complexType>
+</xsd:schema>")
+
 (deftest should-convert-xsd-to-herbert
   (testing "simple type/restriction/string/length"
     (is (= (xml->herbert simpleType-restriction-string-length)
@@ -230,5 +242,9 @@
   (testing "simple type/restriction/string/whitespace/collapse"
     (is (= (xml->herbert simpleType-restriction-string-whitespace-collapse)
            [{:type    "html-like"
-             :herbert '(and (pred str?) (and (pred whiteSpace? :collapse) (pred whiteSpace? :collapse)))}]))))
-
+             :herbert '(and (pred str?) (and (pred whiteSpace? :collapse) (pred whiteSpace? :collapse)))}])))
+  (testing "simplified version of complexType/complexContent/restriction/anyType/sequence/element
+  the simplified version only got complexType/sequence/int complexContent/restriction/anyType is implicit"
+    (is (= (xml->herbert simplified-complexType-complexContent-restriction-anyType-sequence)
+           [{:type    "ArrayOfInt"
+             :herbert '(and (& (:= ELEMENTS [int*]) (when (<= 0 (count ELEMENTS) 2147483647))))}]))))

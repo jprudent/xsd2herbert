@@ -41,9 +41,9 @@
 (defmulti whiteSpace?
           "PRedicate that returns true if s verifies the whiteSpace constraint"
           (fn [kind _] kind))
-(defmethod whiteSpace? :preserve [_ _ ] true)
+(defmethod whiteSpace? :preserve [_ _] true)
 (defmethod whiteSpace? :replace [_ s]
-   (not-any? #{\u0009 \u000A \u000D} s))
+  (not-any? #{\u0009 \u000A \u000D} s))
 (defmethod whiteSpace? :collapse [_ s]
   (and (whiteSpace? :replace s)
        (not (re-matches #".*[\u0020]{2,}.*|^\u0020.*|^.*\u0020$" s))))
@@ -66,12 +66,12 @@
    :doc "Convert a list of enumerations to an Herbert predicate"}
   (let [values (->> (get-facets-values enumerations)
                     (reduce conj #{}))]
-    (list 'pred 'in? values)))                            ;; could be (or "foo" "bar")
+    (list 'pred 'in? values)))                              ;; could be (or "foo" "bar")
 
 (defmethod facets->herbert :length
   [[_ lengths]]
   {:pre [(not-any? #(not= :length (:tag %)) lengths)]
-     :doc "Convert a list of lenth restriction to an Herbert predicate"}
+   :doc "Convert a list of lenth restriction to an Herbert predicate"}
   (->> (get-facets-values lengths)
        (map #(list 'cnt (parse-int %)))
        (reduce conj (list 'and))
@@ -80,7 +80,7 @@
 (defmethod facets->herbert :minLength
   [[_ lengths]]
   {:pre [(not-any? #(not= :minLength (:tag %)) lengths)]
-     :doc "Convert a list of minLength restrictions to an Herbert predicate"}
+   :doc "Convert a list of minLength restrictions to an Herbert predicate"}
   (->> (get-facets-values lengths)
        (map #(list 'pred 'minLength? (parse-int %)))
        (reduce conj (list 'and))
@@ -89,7 +89,7 @@
 (defmethod facets->herbert :maxLength
   [[_ lengths]]
   {:pre [(not-any? #(not= :maxLength (:tag %)) lengths)]
-     :doc "Convert a list of maxLength restrictions to an Herbert predicate"}
+   :doc "Convert a list of maxLength restrictions to an Herbert predicate"}
   (->> (get-facets-values lengths)
        (map #(list 'pred 'maxLength? (parse-int %)))
        (reduce conj (list 'and))
@@ -128,17 +128,71 @@
                           (apply concat))]
     [base restrictions]))
 
-(defn define-simple-type
-  "take an XSD simpleType and returns an Herbert type definition"
+(defmulti handle-particle
+          "this method convert a particle to a seq of herbert pattern
+          Particles are defined in 3.9.
+          typically it correspond to element information items that can bear minOccurs and maxOccurs attributes"
+          (fn [particle] (:tag particle)))
+
+(defn particle-bound->int
+  [^String bound]
+  {:post [(>= % 0)]}
+  (if (= bound "unbounded") Integer/MAX_VALUE
+                            (parse-int bound)))
+(defn minmax-occurs->int
+  [particle]
+  (->> (:attrs particle)
+       ((juxt :minOccurs :maxOccurs))
+       (map particle-bound->int)))
+
+(defmethod handle-particle :element
+  [element]
+  {:pre  [(= :element (:tag element))]
+   :post [(coll? %) (not-empty %)]}
+  (prn element)
+  (let [[min max] (minmax-occurs->int element)]
+    [(list '& '(:= ELEMENTS [int*]) (list 'when (list '<= min '(count ELEMENTS) max)))]))
+
+(defmulti handle-model-group
+          "A model group is one of a sequence, choice or all"
+          (fn [model-group] (:tag model-group)))
+
+(defmethod handle-model-group :sequence
+  [sequence]
+  {:pre  [(= (:tag sequence) :sequence)]
+   :doc  "a sequence group model validation is defined in 3.8.4.1.1"}
+  (->> (:content sequence)
+       (map handle-particle)
+       (apply concat)))
+
+(defmulti define-type
+          "take an xsd type definition and returns an Herbert type definition"
+          (fn [type-def] (:tag type-def)))
+
+(defmethod define-type :simpleType
   [simple-type]
   {:pre  [(= (:tag simple-type) :simpleType)]
-   :post [(= 'and (first (:herbert %)))]}
+   :post [(= 'and (first (:herbert %)))]
+   :doc  "take an XSD simpleType and returns an Herbert type definition"}
   (let [type (get-in simple-type [:attrs :name])
         herberts (->> (map handle-restriction (:content simple-type))
                       (apply concat)
                       (reduce conj (list 'and))
                       reverse)]
     {:type type, :herbert herberts}))
+
+(defmethod define-type :complexType
+  [complex-type]
+  {:pre  [(= (:tag complex-type) :complexType)]
+   :post [(= 'and (first (:herbert %)))]
+   :doc  "take an XSD complexType and returns an Herbert type definition"}
+  (let [type (get-in complex-type [:attrs :name])
+        herberts (->> (map handle-model-group (:content complex-type))
+                      (apply concat)
+                      (reduce conj (list 'and))
+                      reverse)]
+    {:type type, :herbert herberts}))
+
 
 (defn xml->herbert
   "Take a string and returns a seq of Herbert type definition"
@@ -147,4 +201,4 @@
        (find-schemas)
        (map :content)
        (apply concat)
-       (map define-simple-type)))
+       (map define-type)))
